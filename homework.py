@@ -2,29 +2,21 @@ import logging
 import os
 import sys
 import time
+from http import HTTPStatus
 
 import requests
 import telegram
 from dotenv import load_dotenv
 
 import exceptions
+import settings
 
 load_dotenv()
 
 PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
-
-RETRY_TIME = 600
-ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
-
-
-HOMEWORK_STATUSES = {
-    'approved': 'Работа проверена: ревьюеру всё понравилось. Ура!',
-    'reviewing': 'Работа взята на проверку ревьюером.',
-    'rejected': 'Работа проверена: у ревьюера есть замечания.'
-}
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -38,29 +30,33 @@ def send_message(bot, message):
     """Отправка сформированного сообщение через бота."""
     try:
         bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
-    except Exception as error:
+    except telegram.error.TelegramError as error:
         raise exceptions.SendMessageError(
             f'Ошибка при отправке сообщения в Telegram: {error}'
         )
     else:
         logger.info('Удачная отправка сообщения в Telegram')
-        pass
 
 
 def get_api_answer(current_timestamp):
     """Получение ответа от API Практикума."""
     timestamp = current_timestamp or int(time.time())
     params = {'from_date': timestamp}
-
-    response = requests.get(ENDPOINT, headers=HEADERS, params=params)
-    if response.status_code == 404:
-        raise exceptions.ApiUnreachable(
-            'Недоступность эндпоинта Практикума. Ошибка 404'
+    try:
+        response = requests.get(
+            settings.ENDPOINT, headers=HEADERS, params=params
         )
-    elif response.status_code != 200:
-        raise exceptions.OtherApiProblems('Проблема API')
-    else:
-        return(response.json())
+        if response.status_code == HTTPStatus.NOT_FOUND:
+            raise exceptions.ApiUnreachable(
+                'Недоступность эндпоинта Практикума. Ошибка 404'
+            )
+        elif response.status_code != HTTPStatus.OK:
+            raise exceptions.OtherApiProblems('Проблема API')
+        else:
+            return response.json()
+    except requests.exceptions.RequestException as error:
+        log_last_message = f'Проблема при запросе к API {error}'
+        logger.error(log_last_message)
 
 
 def check_response(response):
@@ -96,8 +92,8 @@ def parse_status(homework):
         raise KeyError(
             'Отсутствие ожидаемых ключей в ответе API'
         )
-    if (homework_status in HOMEWORK_STATUSES):
-        verdict = HOMEWORK_STATUSES.get(homework_status)
+    if (homework_status in settings.HOMEWORK_STATUSES):
+        verdict = settings.HOMEWORK_STATUSES.get(homework_status)
     else:
         raise KeyError(
             'Недокументированный статус домашней работы, '
@@ -108,21 +104,18 @@ def parse_status(homework):
 
 def check_tokens():
     """Проверка наличия необходимых токенов и ID чата в окружении."""
-    return (PRACTICUM_TOKEN is not None) and \
-           (TELEGRAM_TOKEN is not None) and \
-           (TELEGRAM_CHAT_ID is not None)
+    return all((
+        PRACTICUM_TOKEN is not None,
+        TELEGRAM_TOKEN is not None,
+        TELEGRAM_CHAT_ID is not None
+    ))
 
 
 def stop_without_tokens():
     """Без вынесения этого в отдельную функцию.
     PEP8 ругается, что main() function is too complex.
     """
-    try:
-        if not check_tokens():
-            raise exceptions.NoEnvExpression(
-                'Не хватает одной или нескольких переменных окружения.'
-            )
-    except exceptions.NoEnvExpression:
+    if not check_tokens():
         logger.critical(
             'Отсутствие обязательных переменных окружения при запуске бота'
         )
@@ -146,33 +139,24 @@ def main():
             else:
                 logger.debug('Отсутствие в ответе новых статусов')
         except exceptions.SendMessageError:
-            logger.error('Сбой при отправке сообщения в Telegram')
-            pass
-        except exceptions.ApiUnreachable:
-            log_last_message = 'Недоступность эндпоинта practicum.yandex'
-            logger.error(log_last_message)
-            pass
+            log_last_message = 'Сбой при отправке сообщения в Telegram'
         except TypeError:
             log_last_message = 'Некорректный формат ответа API'
-            logger.error(log_last_message)
-            pass
         except KeyError:
             log_last_message = 'Отсутствие ожидаемых ключей в ответе API'
-            logger.error(log_last_message)
-            pass
+        except exceptions.ApiUnreachable:
+            log_last_message = 'Недоступность эндпоинта practicum.yandex'
         except exceptions.OtherApiProblems:
             log_last_message = 'Проблема при запросе к API'
-            logger.error(log_last_message)
-            pass
         except Exception as error:
             log_last_message = f'Сбой в работе программы: {error}'
-            logger.error(log_last_message)
         finally:
+            logger.error(log_last_message)
             if log_last_message != log_prev_message:
                 send_message(bot, log_last_message)
                 log_prev_message = log_last_message
             current_timestamp = int(time.time())
-            time.sleep(RETRY_TIME)
+            time.sleep(settings.RETRY_TIME)
 
 
 if __name__ == '__main__':
