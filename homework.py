@@ -46,6 +46,10 @@ def get_api_answer(current_timestamp):
         response = requests.get(
             settings.ENDPOINT, headers=HEADERS, params=params
         )
+    except requests.exceptions.RequestException as error:
+        log_last_message = f'Проблема при запросе к API {error}'
+        logger.error(log_last_message)
+    else:
         if response.status_code == HTTPStatus.NOT_FOUND:
             raise exceptions.ApiUnreachable(
                 'Недоступность эндпоинта Практикума. Ошибка 404'
@@ -54,9 +58,6 @@ def get_api_answer(current_timestamp):
             raise exceptions.OtherApiProblems('Проблема API')
         else:
             return response.json()
-    except requests.exceptions.RequestException as error:
-        log_last_message = f'Проблема при запросе к API {error}'
-        logger.error(log_last_message)
 
 
 def check_response(response):
@@ -104,11 +105,7 @@ def parse_status(homework):
 
 def check_tokens():
     """Проверка наличия необходимых токенов и ID чата в окружении."""
-    return all((
-        PRACTICUM_TOKEN is not None,
-        TELEGRAM_TOKEN is not None,
-        TELEGRAM_CHAT_ID is not None
-    ))
+    return all((PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID))
 
 
 def stop_without_tokens():

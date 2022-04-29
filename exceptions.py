@@ -1,9 +1,3 @@
-class NoEnvExpression(Exception):
-    """Исключение отсутствия обязательных переменных окружения."""
-
-    pass
-
-
 class ApiUnreachable(Exception):
     """Исключение недоступности API Практикума."""
 
