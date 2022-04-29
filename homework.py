@@ -49,15 +49,18 @@ def get_api_answer(current_timestamp):
     except requests.exceptions.RequestException as error:
         log_last_message = f'Проблема при запросе к API {error}'
         logger.error(log_last_message)
+    if response.status_code == HTTPStatus.NOT_FOUND:
+        raise exceptions.ApiUnreachable(
+            'Недоступность эндпоинта Практикума. Ошибка 404'
+        )
+    elif response.status_code != HTTPStatus.OK:
+        raise exceptions.OtherApiProblems('Проблема API')
     else:
-        if response.status_code == HTTPStatus.NOT_FOUND:
-            raise exceptions.ApiUnreachable(
-                'Недоступность эндпоинта Практикума. Ошибка 404'
-            )
-        elif response.status_code != HTTPStatus.OK:
-            raise exceptions.OtherApiProblems('Проблема API')
-        else:
+        try:
             return response.json()
+        except Exception as error:
+            log_last_message = f'Проблема формата ответа API: {error}'
+            logger.error(log_last_message)
 
 
 def check_response(response):
