@@ -53,14 +53,13 @@ def get_api_answer(current_timestamp):
         raise exceptions.ApiUnreachable(
             'Недоступность эндпоинта Практикума. Ошибка 404'
         )
-    elif response.status_code != HTTPStatus.OK:
+    if response.status_code != HTTPStatus.OK:
         raise exceptions.OtherApiProblems('Проблема API')
-    else:
-        try:
-            return response.json()
-        except Exception as error:
-            log_last_message = f'Проблема формата ответа API: {error}'
-            logger.error(log_last_message)
+    try:
+        return response.json()
+    except Exception as error:
+        log_last_message = f'Проблема формата ответа API: {error}'
+        logger.error(log_last_message)
 
 
 def check_response(response):
@@ -71,18 +70,15 @@ def check_response(response):
             homeworks = response.get(key)
             if isinstance(homeworks, list):
                 return homeworks
-            else:
-                raise TypeError(
-                    'Некорректный ответ API. Формат отличается от ожидаемого'
-                )
-        else:
-            raise KeyError(
-                'Отсутствие ожидаемых ключей в ответе API'
+            raise TypeError(
+                'Некорректный ответ API. Формат отличается от ожидаемого'
             )
-    else:
-        raise TypeError(
-            'Некорректный ответ API. Формат отличается от ожидаемого'
+        raise KeyError(
+            'Отсутствие ожидаемых ключей в ответе API'
         )
+    raise TypeError(
+        'Некорректный ответ API. Формат отличается от ожидаемого'
+    )
 
 
 def parse_status(homework):
